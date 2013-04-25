@@ -6,7 +6,7 @@ Created on 2013-4-25
 '''
 import numpy as np
 def sigmod(input):
-    
+    '¼¤Àøº¯Êı'
     out=1.7159*np.tanh(2/3*input)
     return out
 def dsigmoid(input):

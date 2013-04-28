@@ -44,7 +44,7 @@ class convLayer:
         "conn_t 连接权图"
         "kernel_size 核大小"
         kernel_num=conn_t.shape[1]
-        self.kernel_num=kernel_num
+        self.fm_num=np.max(conn_t[1])+1
         weights=[]
         for index in xrange(0,kernel_num):
             connected=np.array((conn_t[1]==conn_t[0,index]),dtype='int')
@@ -58,10 +58,11 @@ class convLayer:
         weights=np.array(weights)
         return weights
     def run(self,input):
-        if input.shape!=self.map_size:
-            raise Exception("the input's shape is not equal the map size")
-        cfm=fun.conv2d(input, self.ct, self.sW, self.sb)
-        sfm=fun.subsampling(cfm, self.cW, self.cb, self.pool_size, self.pool_strid)
+        #if input.shape[0]!=self.map_size[0] or input.shape[1]!=self.map_size[1]:
+        #    raise Exception("the input's shape is not equal the map size")
+        input=np.array(input)
+        cfm=fun.conv2d(input, self.ct, self.cW, self.cb)
+        sfm=fun.subsampling(cfm, self.sW, self.sb, self.pool_size, self.pool_strid)
         self.sfm=sfm
         self.cfm=cfm
         self.output=sfm
@@ -95,14 +96,14 @@ class CNN:
     def __init_CNNLayer(self):
         self.__cnn_layer1__ct__=np.array([[1,1,1,1]])
         self.__cnn_layer2_ct__=np.array([
-                                       [1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0]
-                                       [0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1]
-                                       [0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1]
-                                       [1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0]
+                                       [1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0],
+                                       [0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1],
+                                       [0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1],
+                                       [1,1,0,0,1,1,0,0,1,1,0,0,1,1,0,0],
                                        ])
-        self.__cnn_layer1__=convLayer(self.image_shape,self.__cnn_layer1__ct__)
+        self.__cnn_layer1__=convLayer(self.image_shape,self.kernel_shape,self.__cnn_layer1__ct__)
         self.__cnn_layer2__=convLayer(self.__cnn_layer1__.out_shape,self.kernel_shape,self.__cnn_layer2_ct__)
-        n_cnn_output=self.__cnn_layer2__.kernel_num*self.__cnn_layer2__.out_shape[0]*self.__cnn_layer2__.out_shape[1]
+        n_cnn_output=self.__cnn_layer2__.fm_num*self.__cnn_layer2__.out_shape[0]*self.__cnn_layer2__.out_shape[1]
         self.__bp_hide__=BpLayer(n_cnn_output,20)
         self.__bp_out__=BpLayer(20,10)
         return
@@ -110,20 +111,14 @@ class CNN:
         self.__cnn_layer1__.run(input)
         self.__cnn_layer2__.run(self.__cnn_layer1__.output)
         cnn_layer2_output=self.__cnn_layer2__.output
-        cnn_out_size=self.__cnn_layer2__.kernel_num*self.__cnn_layer2__.out_shape[0]*self.__cnn_layer2__.out_shape[1]
-        cnn_output=np.zeros(cnn_layer2_output)
-        index=0
-        for num in xrange(0,self.__cnn_layer2__.kernel_num):
-            map=self.__cnn_layer2__.output[num]
-            for y in xrange(0,map.shape[0]):
-                for x in xrange(0,map.shape[1]):
-                    cnn_output[index]=map[y][x]
-                    index+=1
+        cnn_out_size=self.__cnn_layer2__.fm_num*self.__cnn_layer2__.out_shape[0]*self.__cnn_layer2__.out_shape[1]
+        cnn_output=self.__cnn_layer2__.output.reshape((cnn_out_size,))
         self.__bp_hide__.run(cnn_output)
         self.__bp_out__.run(self.__bp_hide__.out_put)
+        out=self.__bp_out__.out_put
+        print(out)
+        self.output=fun.max_with_index(out)
+        print(self.output)
         return
     def backProp(self):
         return
-def test():
-    a=convLayer(map_size=np.array([28,28]),kernel_size=np.array([5,5]),conn_t=np.array([[1,1,1,1]]))
-test()

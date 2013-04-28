@@ -27,20 +27,23 @@ def conv2d(fm,ct,kernel,bias):
     '计算特征图的尺寸'
     dst_height=map_height-kernel_height+1
     dst_width=map_width-kernel_width+1
-    '计算输入特征图的数量'
-    cfmDims=np.max(ct[1])
+    '计算输出特征图的数量'
+    cfmDims=np.max(ct[1])+1
     n_kernels=kernel.shape[0]
+    print("ct's shape%d:%d"%(ct.shape[0],ct.shape[1]))
     ' 初始化结果特征图' 
     cfm=np.zeros((cfmDims,dst_height,dst_width))
     for index in xrange(0,cfmDims):
         "首先加上偏置值"
         cfm[index]+=bias[index]
-        for index in xrange(0,n_kernels):
-            this_fm=input[ct[0,index]]
-            this_kernel=kernel[index]
-            "计算卷积"
-            this_conv=signal.convolve2d(this_fm, this_kernel, mode='valid')
-            cfm[index]+=this_conv
+    for index in xrange(0,n_kernels):
+        print(index)
+        this_fm=fm[ct[0,index]]
+        this_kernel=kernel[index]
+        "计算卷积"
+        this_conv=signal.convolve2d(this_fm, this_kernel, mode='valid')
+        cfm_index=ct[1,index]
+        cfm[cfm_index]+=this_conv
     "使用sigmoid压制"
     return sigmoid(cfm)
 def subsampling(fm,sW,sb,pool_size,pool_stride):
@@ -50,10 +53,11 @@ def subsampling(fm,sW,sb,pool_size,pool_stride):
     "sb 重采样偏置 向量"
     "pool_size 重采样窗口大小 二维矩阵"
     "pool_stride 步长 int"
-    sfm_width=int((fm.shape[2]-pool_size[2])/pool_stride)+1
-    sfm_height=int((fm.shape[1]-pool_size[1])/pool_stride)+1
+    sfm_width=int((fm.shape[2]-pool_size[1])/pool_stride)+1
+    sfm_height=int((fm.shape[1]-pool_size[0])/pool_stride)+1
     sfmDims=fm.shape[0]
-    sfm=np.zeros(sfmDims,sfm_width,sfm_height)
+    #sfm=np.zeros((sfmDims,sfm_width,sfm_height))
+    sfm=[]
     "使用权值为1的核进行采样"
     kernel=np.ones(pool_size)
     for index in xrange(0,sfmDims):
@@ -61,8 +65,9 @@ def subsampling(fm,sW,sb,pool_size,pool_stride):
         this_kernel=kernel*sW[index]
         "采样实际就是一次卷积过程"
         this_sfm=signal.convolve2d(this_fm, this_kernel, mode='valid')
-        sfm[index]=copy_fm(this_sfm,pool_stride)
-        sfm[index]+=sb[index]
+        this_sfm=copy_fm(this_sfm,pool_stride)
+        sfm.append(this_sfm)
+    sfm=np.array(sfm)
     sfm=sigmoid(sfm)
     return sfm
 def copy_fm(fm,stride):
@@ -75,7 +80,7 @@ def copy_fm(fm,stride):
         for x in xrange(0,width,stride):
             y_result.append(y_data[x])
         result.append(y_result)
-    return np.append(result)
+    return np.array(result)
 def max_with_index(value):
     "返回最大值，及最大值的下标"
     "结果 [下标,最大值]"
@@ -88,4 +93,3 @@ def test():
     print(b)
     c=dsigmoid(b)
     print(c)
-test()

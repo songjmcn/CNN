@@ -13,7 +13,7 @@ def test_cnn():
     layers=layer.CNN([28,28],[5,5])
     img=train_set[0][0]
     target=train_set[1][0]
-    img=img.reshape([28,28])
-    layers.forwardProp([img])
+    img=img.reshape([1,28,28])
+    layers.train(img, target)
     print(target)
 test_cnn()

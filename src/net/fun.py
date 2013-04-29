@@ -12,7 +12,7 @@ def sigmoid(input):
     return out
 def dsigmoid(input):
     'sigmoid的导函数已知input=sigmod(out)'
-    out=2.0/3.0/1.7159*np.dot((1.7159+input),(1.7159-input))
+    out=2.0/3.0/1.7159*(1.7159+input)*(1.7159-input)
     return out
 def conv2d(fm,ct,kernel,bias):
     '卷积函数'
@@ -87,6 +87,10 @@ def max_with_index(value):
     d=np.max(value)
     i=np.argmax(value)
     return [i,d]
+def dconv2(dout,kernel):
+    return signal.convolve2d(dout,kernel,mode='full')
+def dconv2_kernel(dout,input):
+    return signal.convolve2d(input,dout,mode='valid')
 def test():
     a=np.ones((4,24,24))
     b=sigmoid(a)

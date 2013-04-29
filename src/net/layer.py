@@ -92,7 +92,46 @@ class CNN:
         self.image_shape=image_shape
         self.kernel_shape=kernel_shape
         self.__init_CNNLayer()
+        '学习率'
+        self.__eta__=0.01
+        '学习效率的衰减程度'
+        self.__decay__=0.8
+        '训练多少趟进行衰减'
+        self.__step__=2      
         return
+    @property
+    def eta(self):
+        return self.__eta__
+    @eta.setter
+    def eta(self,value):
+        self.__eta__=value
+        return
+    @property
+    def decay(self):
+        return self.__decay__
+    @decay.setter
+    def decay(self,value):
+        self.__decay__=value
+        return
+    @property
+    def step(self):
+        return self.__step__
+    @step.setter
+    def step(self,value):
+        self.__step__=value
+        return
+    @property
+    def cnn_layer1(self):
+        return self.__cnn_layer1__
+    @property
+    def cnn_layer2(self):
+        return self.__cnn_layer2__
+    @property
+    def bp_hide(self):
+        return self.__bp_hide__
+    @property
+    def bp_out(self):
+        return self.__bp_out__
     def __init_CNNLayer(self):
         self.__cnn_layer1__ct__=np.array([[1,1,1,1]])
         self.__cnn_layer2_ct__=np.array([
@@ -108,11 +147,16 @@ class CNN:
         self.__bp_out__=BpLayer(20,10)
         return
     def forwardProp(self,input):
+        "前向传播"
+        "input 输入值"
+        
+        "卷积层训练"
         self.__cnn_layer1__.run(input)
         self.__cnn_layer2__.run(self.__cnn_layer1__.output)
         cnn_layer2_output=self.__cnn_layer2__.output
         cnn_out_size=self.__cnn_layer2__.fm_num*self.__cnn_layer2__.out_shape[0]*self.__cnn_layer2__.out_shape[1]
         cnn_output=self.__cnn_layer2__.output.reshape((cnn_out_size,))
+        self.__cnn_out_size=cnn_out_size
         self.__bp_hide__.run(cnn_output)
         self.__bp_out__.run(self.__bp_hide__.out_put)
         out=self.__bp_out__.out_put
@@ -120,5 +164,109 @@ class CNN:
         self.output=fun.max_with_index(out)
         print(self.output)
         return
-    def backProp(self):
-        return
+    def backProp(self,input,target):
+        targetOut=-np.ones(self.bp_out.out_put.shape)
+        targetOut[target]=1*0.8
+        self.__backProp__(input, targetOut)
+    def __backProp__(self,input,target):
+        dfm2=np.zeros(self.bp_out.n_out)
+        for i in xrange(0,self.bp_out.out_put.shape[0]):
+            dfm2[i]=self.bp_out.out_put[i]-target[i]
+        fm1=self.cnn_layer1.output
+        fm2=self.cnn_layer2.output
+        sfm=self.cnn_layer2.sfm
+        W1=self.bp_hide.W
+        b1=self.bp_hide.b
+        W2=self.bp_out.W
+        b2=self.bp_out.b
+        bph_in=self.__cnn_layer2__.output.reshape(self.__cnn_out_size)
+        bph_out=self.__bp_hide__.out_put
+        bpo_out=self.__bp_out__.out_put
+        d_bpo_w,d_bpo_b,d_bpo_in=CNN.backProp_bpLayer(bph_out, dfm2, bpo_out, W2, b2)
+        d_bph_w,d_bph_b,d_bph_in=CNN.backProp_bpLayer(bph_out,d_bpo_in,bph_in,W1,b1)
+        self.bp_out.W=W2-d_bpo_w*self.eta
+        self.bp_out.b=b2-d_bpo_b*self.eta
+        self.bp_hide.W=W1-d_bph_w*self.eta
+        self.bp_hide.b=b1-d_bph_b*self.eta
+    @staticmethod  
+    def backProp_bpLayer(input,dtarget,output,w,b):
+        "对bp层进行反向传播，调整参数"
+        "input 输入数据"
+        "dtaerget 期望的输出的导数"
+        "input 本层的输出"
+        "w 本层的权值"
+        "b 本层的偏置值"
+        "return [dw,db,din] 权值的梯度，偏置值的梯度，输入数据的梯度"
+        dtarget=dtarget*fun.dsigmoid(output)
+        db=np.zeros(b.shape)
+        dw=np.zeros(w.shape)
+        din=np.zeros(input.shape)
+        for i in xrange(0,db.shape[0]):
+            this_output=output[i]
+            this_dtarget=dtarget[i]
+            db[i]=np.sum(this_dtarget)
+            this_w=w[i]
+            this_din,dw[i]=CNN.dMultiply(dtarget,output,input,this_w)
+            din=din+this_dtarget
+        return [dw,db,din]
+    @staticmethod
+    def backProp_conv(dcfm,cfm,fm,ct,w,b):
+        '将卷积层反向传播'
+        'dcfm 误差关于cfm的偏导数'
+        'cfm 卷基层的输出'
+        'fm 卷基层的输入'
+        'ct fm和cfm之间的连接表'
+        'w 卷积核'
+        'b 偏置'
+        dfm=np.zeros(fm.shape)
+        dw=np.zeros(w.shape)
+        db=np.zeros(b.shape)
+        dcfm=dcfm*fun.dsigmoid(cfm)
+        for i in xrange(0,b.shape[0]):
+            this_dcfm=dcfm[i]
+            db[i]=np.sum(this_dcfm)
+        for i in xrange(0,w.shape[0]):
+            this_fm=fm[ct[0,i]]
+            this_w=w[i]
+            this_dcfm=dcfm[ct[1,i]]
+            '误差关于dfm的偏导数'
+            this_dfm=fun.dconv2(this_dcfm, this_w)
+            dfm[ct[0,i]]=dfm[ct[0,i]]+this_dfm
+            '误差关于dw的偏导数'
+            dw[i]=fun.dconv2_kernel(this_dcfm, this_fm)
+        return [dfm,dw,db]
+    @staticmethod
+    def backPropSubsampling(dsfm,sfm,fm,sw,sb,pool_size,stride):
+        dims,height,width=fm.shape
+        dfm=np.zeros((dims,height,width))
+        dsw=np.zeros(sw.shape)
+        dsb=np.zeros(sb.shape)
+        dsfm=dsfm*fun.dsigmoid(sfm)
+        kernel=np.ones(pool_size)
+        for i in xrange(0,dims):
+            this_dsfm=dsfm[i]
+            this_kernel=kernel*sw[i]
+            dsb[i]=np.sum(this_dsfm[:])
+            dsfm_beforeSubsampling=np.zeros((height-pool_size[0]+1,width-pool_size[1]+1))
+            for y in xrange(0,dsfm_beforeSubsampling.shape[0],stride):
+                for x in xrange(0,dsfm_beforeSubsampling.shape[1],stride):
+                    dsfm_beforeSubsampling[y,x]=this_dsfm
+            dfm[i]=fun.dconv2(dsfm_beforeSubsampling, fm[i])
+            dthis_kernel=fun.dconv2_kernel(dsfm_beforeSubsampling, fm[i])
+            dsw[i]=np.sum(dthis_kernel)
+        return [dfm,dsw,dsb]
+    def train(self,input,target):
+        self.forwardProp(input)
+        self.backProp(input,target)
+    @staticmethod
+    def dMultiply(dout,out,input,w):
+        din=np.zeros(input.shape)
+        dw=np.zeros(w.shape)
+        for i in xrange(0,input.shape[0]):
+            this_in=input[i]
+            this_w=w[i]
+            this_dw=dout*this_in
+            dw[i]=np.sum(this_dw)
+            this_din=dout*this_w
+            din[i]=this_din
+        return np.array([din,dw])

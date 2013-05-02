@@ -30,14 +30,14 @@ def conv2d(fm,ct,kernel,bias):
     '计算输出特征图的数量'
     cfmDims=np.max(ct[1])+1
     n_kernels=kernel.shape[0]
-    print("ct's shape%d:%d"%(ct.shape[0],ct.shape[1]))
+    #print("ct's shape%d:%d"%(ct.shape[0],ct.shape[1]))
     ' 初始化结果特征图' 
     cfm=np.zeros((cfmDims,dst_height,dst_width))
     for index in xrange(0,cfmDims):
         "首先加上偏置值"
         cfm[index]+=bias[index]
     for index in xrange(0,n_kernels):
-        print(index)
+        #print(index)
         this_fm=fm[ct[0,index]]
         this_kernel=kernel[index]
         "计算卷积"
@@ -87,13 +87,28 @@ def max_with_index(value):
     d=np.max(value)
     i=np.argmax(value)
     return [i,d]
-def dconv2(dout,kernel):
+def conv3d(input,w):
+    out_height=input.shape[1]-w.shape[1]+1
+    out_width=input.shape[2]-w.shape[2]+1
+    out=np.zeros((out_height,out_width))
+    for i in xrange(input.shape[0]):
+        this_in=input[i]
+        this_w=w[i]
+        this_out=signal.convolve2d(this_in,this_w,mode='valid')
+        out+=this_out
+    return out
+def dconv2_in(dout,input,kernel):
     return signal.convolve2d(dout,kernel,mode='full')
-def dconv2_kernel(dout,input):
+def dconv2_kernel(dout,input,kernel):
     return signal.convolve2d(input,dout,mode='valid')
-def test():
-    a=np.ones((4,24,24))
-    b=sigmoid(a)
-    print(b)
-    c=dsigmoid(b)
-    print(c)
+def dconv3d(dout,din,input,w):
+    din=np.zeros(input.shape)
+    dw=np.zeros(w.shape)
+    for i in xrange(input.shape[0]):
+        this_in=input[i]
+        this_w=w[i]
+        this_din=dconv2_in(dout,this_in,this_w)
+        din[i]=this_din
+        this_dk=dconv2_kernel(dout,this_in,this_w)
+        dw[i]=this_dk
+    return [din,dw]

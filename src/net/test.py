@@ -4,6 +4,7 @@
 import cPickle
 import gzip
 import layer
+import gc
 def load_data(path):
     f=gzip.open(path,'rb')
     train_set,valid_set,test_set=cPickle.load(f)
@@ -16,6 +17,8 @@ def test_cnn():
     for train in xrange(train_num):
         print("µÚ%dÌËÑµÁ·\n"%(train+1))
         completed=0
+        layers.noErrors=0
+        layers.errors=0
         for index in xrange(imgs):
             img=train_set[0][index]
             target=train_set[1][index]
@@ -24,5 +27,5 @@ def test_cnn():
             completed+=1
             if completed%1000==0 and completed!=0:
                 print('total sample %s,no errors %s\n'%(completed,layers.noErrors))
-            
+                gc.collect()
 test_cnn()

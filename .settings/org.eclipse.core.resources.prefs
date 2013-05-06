@@ -1,5 +1,6 @@
 eclipse.preferences.version=1
 encoding//src/net/CNN.py=gbk
+encoding//src/net/cnn2.py=gbk
 encoding//src/net/fun.py=gbk
 encoding//src/net/layer.py=gbk
 encoding//src/net/test.py=gbk

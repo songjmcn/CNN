@@ -11,10 +11,13 @@ import theano.tensor.nnet as conv
 from theano.tensor.signal import downsample
 import gzip
 import cPickle
+import os
+import time
+import sys
 class LeyNetLayer:
-    def __init__(self,image_shape,filter_shape,poolsize=(2,2)):
+    def __init__(self,rng,image_shape,filter_shape,poolsize=(2,2)):
         '生成随机数生成器'
-        rng = numpy.random.RandomState(23455)
+        #rng = numpy.random.RandomState(23455)
         self.image_shape=image_shape
         self.filter_shape=filter_shape
         '每个特征图的输出'
@@ -35,8 +38,8 @@ class LeyNetLayer:
         pooled_out=downsample.max_pool_2d(input=conv_out,ds=self.poosize,ignore_border=True)
         self.output=T.tanh(pooled_out + self.b.dimshuffle('x', 0, 'x', 'x'))
 class HiddenLayer:
-    def __init__(self,n_in,n_out,active=T.nnet.sigmoid):
-        rng=numpy.random.RandomState(23455)
+    def __init__(self,rng,n_in,n_out,active=T.nnet.sigmoid):
+        #rng=numpy.random.RandomState(23455)
         W_values = numpy.asarray(rng.uniform(
                     low=-numpy.sqrt(6. / (n_in + n_out)),
                     high=numpy.sqrt(6. / (n_in + n_out)),
@@ -51,8 +54,7 @@ class HiddenLayer:
         return
     def evaluate(self,input):
         tmp=T.dot(input, self.w)+self.b
-        self.outout=self.active(tmp)
-        return
+        self.output=self.active(tmp)
 class OutLayer:
     def __init__(self,n_in,n_out):
         self.w = theano.shared(value=numpy.zeros((n_in, n_out),
@@ -66,13 +68,13 @@ class OutLayer:
         return
     def evaluate(self,input):
         self.p_y_given_x=T.nnet.softmax(T.dot(input,self.w)+self.b)
-        self.y_pred=T.argmax(self.p_y_given_x)
+        self.y_pred=T.argmax(self.p_y_given_x,axis=1)
         return
     def negative_log_likelihood(self,y):
          t=T.log(self.p_y_given_x)[T.arange(y.shape[0]), y]
-         return T.mean(t)
-    def errors(self,input,target):
-        self.evaluate(input)
+         #theano.pp(self.errors(y))
+         return -T.mean(t)
+    def errors(self,target):
         return T.mean(T.neq(self.y_pred, target))
 def load_data(dataset):
     ''' Loads the dataset
@@ -138,9 +140,12 @@ def load_data(dataset):
     rval = [(train_set_x, train_set_y), (valid_set_x, valid_set_y),
             (test_set_x, test_set_y)]
     return rval
-def train_cnn(path='d:/data/mnist.pkl.gz.'):
+def train_cnn(path='/home/songjm/data/mnist.pkl.gz'):
+    rng=numpy.random.RandomState(23455)
     learn_rate=0.01
     batch_size=500
+    learning_rate=0.05
+    n_epochs=20
     datasets=load_data(path)
     train_set_x, train_set_y = datasets[0]
     valid_set_x, valid_set_y = datasets[1]
@@ -154,30 +159,88 @@ def train_cnn(path='d:/data/mnist.pkl.gz.'):
     index = T.lscalar()  # index to a [mini]batch
     x = T.matrix('x')   # the data is presented as rasterized images
     y = T.ivector('y')  # the labels are presented as 1D vector of
-    layer1=LeyNetLayer(image_shape=[batch_size,1,28,28],filter_shape=[4,1,5,5])
-    layer2=LeyNetLayer(image_shape=[batch_size,4,12,12],filter_shape=[16,1,5,5])
-    layer3=HiddenLayer(n_in=16*4*4,n_out=20)
-    layer4=OutLayer(n_in=20,n_out=10)
-    def forward(x):
-        layer1_in=x.reshape((batch_size,1,28,28))
-        layer1.evaluate(x)
-        layer2.evaluate(layer1.output)
-        layer3_in=layer2.output.flatten(2)
-        layer3.evaluate(layer3_in)
-        layer4.evaluate(layer3.outout)
-        return layer4.y_pred
-    def update():
-       cost=layer4.negative_log_likelihood(y)
-       params = layer4.params + layer3.params + layer2.params + layer1.params
-       grads=T.grad(cost,params)
-       updates=[]
-       for param_i, grad_i in zip(params, grads):
-           updates.append((param_i,param_i-grad_i*learn_rate))
-       return updates
-    train_fun=theano.function(input=[index],output=forward,
-                              givens={
-                                      x: train_set_x[index * batch_size: (index + 1) * batch_size],
-                                      y: train_set_y[index * batch_size: (index + 1) * batch_size]})
-    for mini_batch in xrange(n_train_batches):
-        target=train_fun(mini_batch)
-        print(target)
+    layer1=LeyNetLayer(rng=rng,image_shape=[batch_size,1,28,28],filter_shape=[4,1,5,5])
+    layer2=LeyNetLayer(rng=rng,image_shape=[batch_size,4,12,12],filter_shape=[16,4,5,5])
+    layer3=HiddenLayer(rng=rng,n_in=16*4*4,n_out=100,active=T.tanh)
+    layer4=OutLayer(n_in=100,n_out=10)
+    layer1_in=x.reshape((batch_size,1,28,28))
+    layer1.evaluate(layer1_in)
+    layer2.evaluate(layer1.output)
+    layer3_in=layer2.output.flatten(2)
+    layer3.evaluate(layer3_in)
+    layer4.evaluate(layer3.output)
+    cost=layer4.negative_log_likelihood(y)
+    errors=layer4.errors(y)
+    test_model = theano.function([index], errors,
+             givens={
+                x: test_set_x[index * batch_size: (index + 1) * batch_size],
+                y: test_set_y[index * batch_size: (index + 1) * batch_size]})
+    params = layer4.params + layer3.params + layer2.params + layer1.params
+    grads = T.grad(cost, params)
+    updates = []
+    for param_i, grad_i in zip(params, grads):
+        updates.append((param_i, param_i - learning_rate * grad_i))
+    train_model = theano.function([index], cost, updates=updates,
+            givens={
+            x: train_set_x[index * batch_size: (index + 1) * batch_size],
+            y: train_set_y[index * batch_size: (index + 1) * batch_size]})
+    print '... training'
+    # early-stopping parameters
+    patience = 10000  # look as this many examples regardless
+    patience_increase = 2  # wait this much longer when a new best is
+                           # found
+    improvement_threshold = 0.995  # a relative improvement of this much is
+                                   # considered significant
+    validation_frequency = min(n_train_batches, patience / 2)
+                                  # go through this many
+                                  # minibatche before checking the network
+                                  # on the validation set; in this case we
+                                  # check every epoch
+
+    best_params = None
+    best_validation_loss = numpy.inf
+    best_iter = 0
+    test_score = 0.
+    start_time = time.clock()
+
+    epoch = 0
+    done_looping = False
+
+    while (epoch < n_epochs) and (not done_looping):
+        epoch = epoch + 1
+        for minibatch_index in xrange(n_train_batches):
+
+            iter = epoch * n_train_batches + minibatch_index
+
+            if iter % 100 == 0:
+                print 'training @ iter = ', iter
+            cost_ij = train_model(minibatch_index)
+
+            if (iter + 1) % validation_frequency == 0:
+
+                # compute zero-one loss on validation set
+                    best_iter = iter
+                    # test it on the test set
+                    test_losses = [test_model(i) for i in xrange(n_test_batches)]
+                    test_score = numpy.mean(test_losses)
+                    if test_score < best_validation_loss:
+                        best_validation_loss=test_score
+                    print(('     epoch %i, minibatch %i/%i, test error of best '
+                           'model %f %%') %
+                          (epoch, minibatch_index + 1, n_train_batches,
+                           test_score * 100.))
+
+            if patience <= iter:
+                done_looping = True
+                break
+
+    end_time = time.clock()
+    print('Optimization complete.')
+    print('Best validation score of %f %% obtained at iteration %i,'\
+          'with test performance %f %%' %
+          (best_validation_loss * 100., best_iter, test_score * 100.))
+    print >> sys.stderr, ('The code for file ' +
+                          os.path.split(__file__)[1] +
+                          ' ran for %.2fm' % ((end_time - start_time) / 60.))
+
+train_cnn()

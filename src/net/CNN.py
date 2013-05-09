@@ -9,10 +9,11 @@ import scipy.signal as signal
 import cPickle
 import gzip
 import gc
+import scipy
 #import objgraph  
 def sigmoid(input):
     '激励函数'
-    out=1.7159*np.tanh(2.0/3.0*input)
+    out=1.7159*scipy.tanh(2.0/3.0*input)
     return out
 def dsigmoid(input):
     'sigmoid的导函数已知input=sigmod(out)'
@@ -71,7 +72,6 @@ def subsampling(fm,sW,sb,pool_size,pool_stride):
         this_sfm=signal.convolve2d(this_fm, this_kernel, mode='valid')
         sfm[index]=copy_fm(this_sfm,pool_stride)
         sfm[index]=sfm[index]+sb[index]
-    sfm=np.array(sfm)
     sfm=sigmoid(sfm)
     return sfm
 def copy_fm(fm,stride):
@@ -216,7 +216,7 @@ class convnet:
     def forwradPropBp(self,input):
         "开始第一层分类器的操作"
         w=self.bp1.w
-        b=self.bp2.b
+        b=self.bp1.b
         out1=np.dot(input,w)
         for i in xrange(b.shape[0]):
             out1[i]+=b[i]
@@ -340,6 +340,7 @@ class convnet:
 def load_data(path):
     f=gzip.open(path,'rb')
     train_set,valid_set,test_set=cPickle.load(f)
+    del f.f
     return [train_set,valid_set,test_set]
 if __name__=='__main__':
     gc.enable()

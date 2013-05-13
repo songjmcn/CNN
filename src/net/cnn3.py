@@ -10,6 +10,8 @@ from scipy import dot
 from scipy import sum
 import gzip
 import cPickle
+from cnn_fun import *
+'''
 def sigmoid(data):
     '激活函数'
     out=1.7159*numpy.tanh(2.0/3.0*data)
@@ -17,6 +19,7 @@ def sigmoid(data):
 def dsigmoid(data):
     out=2.0/3.0/1.7159*(1.7159+data)*(1.7159-data)
     return out
+    '''
 class ConvLayer:
     'convolution layer'
     def __init__(self):
@@ -43,8 +46,8 @@ class LeyNet5:
         self.classifer2=Layer()
         self.eta=0.01
         self.decay=0.8
-        self.no_errors=0
-        self.total_conv=0
+        self.no_errors=0.0
+        self.total_conv=0.0
     def train(self,input,target):
         'train'
         pre_target=self.forwardProp(input)
@@ -55,8 +58,8 @@ class LeyNet5:
             self.no_errors+=1
         self.total_conv+=1
     def clear(self):
-        self.no_errors=0
-        self.total_conv=0
+        self.no_errors=0.0
+        self.total_conv=0.0
         return
     def decay_eta(self):
         self.eta=self.eta*self.decay
@@ -87,10 +90,10 @@ class LeyNet5:
         fm1,fm2=classifer(sfm2, k1, b1, k2, b2)
         self.fm1=fm1
         self.fm2=fm2
-        self.total_conv+=1
         pre_target =numpy.argmax(fm2)
+        self.total_conv+=1
         if pre_target==target:
-            self.errors+=1
+            self.no_errors+=1
     def forwardProp(self,input):
         self.input=input
         ct=self.conv1.ct
@@ -124,7 +127,7 @@ class LeyNet5:
         self.fm2=fm2
         return numpy.argmax(fm2)
     def backProp(self,fmaps,targetOut,eta):
-        dfm2=numpy.zeros(self.fm2)
+        #dfm2=numpy.zeros(self.fm2.shape)
         dfm2=self.fm2-targetOut
         fm1=self.fm1
         fm2=self.fm2
@@ -170,12 +173,13 @@ class LeyNet5:
         dfm,dck,dcb=bpConvolutional(dcfm, cfm, fm, ct, ck, cb)
         self.conv1.cw=ck-dck*eta
         self.conv1.cb=cb-dcb*eta
+'''
 def dconv2d_in(dout,input,k,type):
     din=None
     if type=='valid':
         din=sg.convolve(dout,k,'full')
     elif type=='full':
-        din=sg.convolve(dout,k,'valid')
+        din=sg.convolve(dout,numpy.rot90(k,2),'valid')
     elif type=='same':
         din=sg.convolve(dout,k,'same')
     else:
@@ -184,12 +188,13 @@ def dconv2d_in(dout,input,k,type):
 def dconv2d_k(dout,input,k,type):
     dk=None
     if type=='valid':
-        dk=sg.convolve(input, dout,'valid')
+        dk=sg.convolve(input, numpy.rot90(dout,2),'valid')
     elif type=='full':
-        dk=sg.convolve(dout,input,'valid')
+        dk=sg.convolve(dout,numpy.rot90(dout,2),'valid')
     else:
         raise TypeError('type argument is error')
     return dk
+'''
 def create_cnn(image_shape=(28,28),filter_shape=(5,5),skw=2,stride=2):
     cnn=LeyNet5()
     ct1=numpy.transpose(numpy.array([[0,0,0,0],[0,1,2,3]]))
@@ -258,7 +263,7 @@ def create_cnn(image_shape=(28,28),filter_shape=(5,5),skw=2,stride=2):
     cnn.classifer2.w=-sd+2*sd*numpy.random.random_sample((nofm1,nofm2))
     cnn.classifer2.b=numpy.zeros((nofm2))
     return cnn
-    
+'''    
 def convolutional(fm,ct,k,b):
     'fm feature map,3D'
     'ct coeenction table'
@@ -274,7 +279,7 @@ def convolutional(fm,ct,k,b):
     for i in xrange(k.shape[0]):
         this_fm=fm[ct[i,0]]
         this_k=k[i]
-        this_conv=sg.convolve(this_fm, this_k, mode='valid')
+        this_conv=sg.convolve(this_fm, numpy.rot90(this_k,2), mode='valid')
         cfm[ct[i,1]]=cfm[ct[i,1]]+this_conv
     cfm=sigmoid(cfm)
     return cfm
@@ -287,10 +292,16 @@ def subsampling(fm,sk,sb,sw,ss):
     for i in xrange(sfmDims):
         this_fm=fm[i]
         this_kernel=kernel*sk[i]
-        this_sfm=sg.convolve(this_fm,this_kernel,'valid')
-        y=range(0,this_sfm.shape[0],ss)
-        x=range(0,this_sfm.shape[1],ss)
-        sfm[i]=this_sfm[y,x]
+        this_sfm=sg.convolve(this_fm,numpy.rot90(this_kernel,2),'valid')
+        x=0
+        y=0
+        '开始采样'
+        for dy in xrange(0,this_sfm.shape[0],ss):
+            x=0
+            for dx in xrange(0,this_sfm.shape[1],ss):
+                sfm[i,y,x]=this_sfm[dy,dx]
+                x+=1
+            y+=1
         sfm[i]+=sb[i]
     sfm=sigmoid(sfm)
     return sfm
@@ -305,13 +316,14 @@ def classifer(sfm,k1,b1,k2,b2):
         for i in xrange(data.shape[0]):
             this_in=data[i]
             this_k=k[i]
-            this_out=sg.convolve(this_in, this_k, 'valid')
+            this_out=sg.convolve(this_in, numpy.rot90(this_k,2), 'valid')
             out+=this_out[0][0]
         return out
     for i in xrange(fm1Dims):
         fm1[i]+=b1[i]
         this_fm1=conv3d(sfm,k1[i])
         fm1[i]+=this_fm1
+    fm1=sigmoid(fm1)
     fm2Dims=b2.shape[0]
     fm2=numpy.zeros(fm2Dims)
     tmp=dot(fm1,k2)
@@ -351,7 +363,7 @@ def bpClassifer(dfm2,fm1,fm2,sfm,k1,b1,k2,b2):
     for i in xrange(db2.shape[0]):
         this_fm2=fm2[i]
         this_dfm2=dfm2[i]
-        db2=this_dfm2
+        db2[i]=this_dfm2
         this_k2=k2[:,i]
         this_dfm1,dk2[:,i]=dOutputLayer(this_dfm2,this_fm2,fm1,this_k2)
         dfm1=dfm1+this_dfm1
@@ -408,6 +420,7 @@ def bpConvolutional(dcfm,cfm,fm,ct,k,b):
         dfm[ct[i,0]]=dfm[ct[i,0]]+this_dfm
         dk[i]=dconv2d_k(this_dcfm,this_fm,this_k,'valid')
     return dfm,dk,db
+'''
 def load_data(path):
     f=gzip.open(path,'rb')
     train_set,valid_set,test_set=cPickle.load(f)
@@ -417,12 +430,24 @@ def train():
     train_set,valid_set,test_set=load_data('d:/data/mnist.pkl.gz')
     num=train_set[0].shape[0]
     total_loop=20
+    train_sample=train_set[0]*2-1
+    train_label=train_set[1]
+    test_sample=test_set[0]*2-1
+    test_label=test_set[1]
+    test_num=test_label.shape[0]
     for loop in xrange(1,total_loop+1):
+        print("train %d loop"%(loop))
         for i in xrange(num):
-            cnn.train(numpy.array([train_set[0][i].reshape(28,28)]), train_set[1][i])
+            #print(train_sample[i])
+            cnn.train(train_sample[i].reshape(1,28,28),train_label[i])
+            #cnn.train(numpy.array([train_sample[i].reshape(28,28)]), train_label[i])
             i=i+1
             if i %2000==0:
                 print('total train %d,on errors %d'%(cnn.total_conv,cnn.no_errors))
+        cnn.clear()
+        for i in xrange(test_num):
+            cnn.test(test_sample[i].reshape(1,28,28), test_label[i])
+        print('T:%s\n'%(cnn.no_errors/cnn.total_conv))
         cnn.clear()
         if loop%2==0:
             cnn.decay_eta()
